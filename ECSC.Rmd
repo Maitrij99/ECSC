@@ -1,0 +1,414 @@
+---
+title: "ECSC"
+output: html_document
+date: "2023-12-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Libraries and data
+```{r}
+
+library(tidyverse)
+
+df = read_csv("ECSC ECBI data.csv")
+
+
+
+```
+
+
+# Intensity scores
+```{r}
+
+#taking out useful columns
+
+df_intensity = df %>% select(c(ecbi1_timestamp, Child_ID, ecbi1a, ecbi_2a, ecbi_3a, ecbi_4a, ecbi_5a, ecbi_6a, ecbi_7a, ecbi_8a, ecbi_9a, ecbi_10a, ecbi_11a, ecbi_12a, ecbi_13a, ecbi_14a, ecbi_15a, ecbi_16a, ecbi_17a, ecbi_18a, ecbi_19a, ecbi_20a, ecbi_21a, ecbi_22a, ecbi_22a_a, ecbi_24a, ecbi_25a, ecbi_26a, ecbi_27a, ecbi_28a, ecbi_29a, ecbi_30a, ecbi_31a, ecbi_32a, ecbi_33a, ecbi_34a, ecbi_35a, ecbi_36a))
+```
+
+
+# Problem Scores
+```{r}
+
+#taking out useful columns
+
+df_problem = df %>% select(ecbi_1b, ecbi_2b, ecbi_3b, ecbi_4b, ecbi_5b, ecbi_6b, ecbi_7b, ecbi_8b, ecbi_9b, ecbi_10b, ecbi_11b, ecbi_12b, ecbi_13b, ecbi_14b, ecbi_15b, ecbi_16b,ecbi_17b, ecbi_18b, ecbi_19b, ecbi_20b, ecbi_21b, ecbi_22b, ecbi_22b_a, ecbi_24b, ecbi_25b, ecbi_26b, ecbi_27b, ecbi_28b, ecbi_29b, ecbi_30b, ecbi_31b, ecbi_32b, ecbi_33b, ecbi_34b, ecbi_35b, ecbi_36b)
+
+```
+
+# combining the two  dataframes above
+```{r}
+df_ecbi = cbind(df_intensity, df_problem)
+```
+
+# Adding data from qualltrics
+```{r}
+
+df_qual = read_csv("ECBI_qualtrics.csv")
+df2 = df_qual[3:78, 18:92]
+df2 = df2 %>% select(-c("Q7"))
+
+df2 = df2 %>% select(2, 1, 3:17, 33:42, 53:63, 18:32, 43:52, 64:74)
+
+initial_names= colnames(df2)
+
+new_names = colnames(df_ecbi)
+names(df2) <- new_names
+
+# problem scores to numeric
+df2[39:74] = ifelse(df2[39:74] == "Yes", 1, 0)
+
+df_ecbi2 = rbind(df_ecbi, df2)
+  
+```
+
+# adding calculated columns
+
+## Intensity
+
+```{r}
+
+df_int2 = df_ecbi2 %>% select(1:38)
+
+df_int2[3:38] <- sapply(df_int2[3:38],as.numeric)
+sapply(df_int2, class)
+
+# intensity scores
+
+## calculating number missing
+df_int2$numMissing_intensity <- rowSums(is.na(df_int2))
+
+## calculating sum
+df_int2$intensity_total[df_int2$numMissing_intensity < 3] = rowSums(df_int2[df_int2$numMissing_intensity < 3, c(3:38)], na.rm =  TRUE)
+```
+
+
+## problem scores
+
+```{r}
+
+df_prob2 = df_ecbi2 %>% select(39:74)
+
+## calculating number missing
+df_prob2$numMissing_problem <- rowSums(is.na(df_prob2))
+
+## calculating sum
+df_prob2$problem_total[df_prob2$numMissing_problem < 3] = rowSums(df_prob2[df_prob2$numMissing_problem < 3, c(1:36)], na.rm =  TRUE)
+```
+
+# ordering data frame
+```{r}
+
+# merging problem and intensity dfs again
+df_ecbi3 = cbind(df_int2, df_prob2)
+
+```
+
+```{r}
+#ordering
+df_ecbi_ordered <- df_ecbi3[order(df_ecbi3$Child_ID),]
+
+table(df_ecbi_ordered$Child_ID)
+
+df_ecbi_ordered$Child_ID = recode(df_ecbi_ordered$Child_ID, "bc" = "207", "BLC" = "207", "BT" = "230", "EB" = "231", "eb" = "231", "Eb" = "231", "EJB" = "231", "ep" = "233", "EP" = "233", "gaj" = "234", "GAJ" = "234", "GJ" = "234", "LK"  = "235", "sctm" = "236", "SCTM" = "236", "XJ" = "237", "zlm" = "238", "ZLM" = "238", "zm" = "238", "ZM" = "238")
+
+df_ecbi_ordered = df_ecbi_ordered %>% filter(Child_ID != "test")
+
+### 207 causing problems - was being pooled across wualltrics and REDCap - removing it for now
+df_ecbi_ordered = df_ecbi_ordered %>% filter(Child_ID != "207")
+```
+
+# create timepoint column
+```{r}
+
+df_ecbi_ordered = df_ecbi_ordered %>%
+    group_by(Child_ID) %>%
+    mutate(timepoint = 1:n()) %>%
+    ungroup
+
+```
+
+# Difference scores for problem
+
+```{r}
+
+df_problem = df_ecbi_ordered %>% select("Child_ID", "problem_total", "timepoint")
+df_problem$problem_total_z = as.numeric(scale(df_problem$problem_total, center = TRUE, scale = TRUE))
+
+diff_df <- df_problem  %>% na.omit() %>%           
+   group_by(Child_ID) %>%
+  mutate(last3mean = mean(tail(problem_total_z, 3), na.rm = TRUE),
+         first3mean = mean(head(problem_total_z, 3), na.rm = TRUE),
+         change = first3mean - last3mean)
+
+count = diff_df %>% group_by(Child_ID) %>% summarise(n = n()) 
+
+                          
+problem_final_df =diff_df %>% group_by(Child_ID) %>% sample_n(1) %>% select(-c(problem_total, timepoint, problem_total_z)) %>% cbind(., count [,2])
+
+write.csv(problem_final_df, "problem_ecbi.csv")
+  
+```
+
+
+## Graph
+```{r}
+
+# scores across time
+longitudinal = ggplot(df_problem, aes(x = timepoint, y = problem_total_z, color = as.character(Child_ID))) +
+  geom_point() +
+  geom_line() +
+  stat_smooth(method = "lm", se = FALSE)
+
+longitudinal
+
+# number of sessions vs change scores
+
+## LINEAR
+graph2 = ggplot(problem_final_df, aes(x = n, y = change)) +
+  geom_point(alpha =0.3) +
+  geom_line(alpha =0.2) +
+  geom_smooth(method = "lm", color = "orange") +
+  theme_bw() +
+  xlab("Number of sessions") +
+  ylab("Problem Change Scores")
+graph2
+
+
+ 
+summary(lm(data = problem_final_df, change ~ n))
+
+```
+
+# Difference scores for intensity
+
+```{r}
+
+df_intensity = df_ecbi_ordered %>% select("Child_ID", "intensity_total", "timepoint")
+df_intensity$intensity_total_z = as.numeric(scale(df_intensity$intensity_total, center = TRUE, scale = TRUE))
+
+
+diff_df_intensity <- df_intensity  %>% na.omit() %>%           
+   group_by(Child_ID) %>%
+  mutate(last3mean = mean(tail(intensity_total_z, 3), na.rm = TRUE),
+         first3mean = mean(head(intensity_total_z, 3), na.rm = TRUE),
+         change = first3mean - last3mean)
+
+count_intensity = diff_df_intensity %>% group_by(Child_ID) %>% summarise(n = n()) 
+
+                          
+intensity_final_df =diff_df_intensity %>% group_by(Child_ID) %>% sample_n(1) %>% select(-c(intensity_total, timepoint, intensity_total_z)) %>% cbind(., count_intensity [,2])
+
+write.csv(intensity_final_df, "intensity_ecbi.csv")
+  
+```
+
+## Graphs
+```{r}
+
+# scores across time
+longitudinal_intensity = ggplot(df_intensity, aes(x = timepoint, y = intensity_total_z, color = as.character(Child_ID))) +
+  geom_point() +
+  geom_line() +
+  stat_smooth(method = "lm", se = FALSE)
+
+longitudinal_intensity
+
+# number of sessions vs change scores
+graph2_intensity = ggplot(intensity_final_df, aes(x = n, y = change)) +
+  geom_point(alpha = 0.3, color = "purple") +
+  geom_line(alpha = 0.2, color = "purple") +
+  geom_smooth(method = "lm", color = "purple") +
+  geom_point(data = problem_final_df, aes(x = n, y = change), alpha = 0.3, color = "orange") +
+  geom_line(data = problem_final_df, aes(x = n, y = change), alpha = 0.2, color = "orange") +
+  geom_smooth(data = problem_final_df, aes(x = n, y = change), method = "lm", color = "orange") +
+  theme_bw(base_size = 26) +
+  xlab("Number of Sessions") +
+  ylab("Change Scores") +
+  theme(
+   # panel.background = element_rect(fill='transparent'), #transparent panel bg
+   plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+  #  panel.grid.major = element_blank(), #remove major gridlines
+   # panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent'), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent') #transparent legend panel
+  ) +
+  theme(text=element_text(color="white"),axis.text=element_text(color="white"))
+graph2_intensity
+ggsave('graph2_intensity.png', graph2_intensity, bg='transparent')
+
+summary(lm(data = intensity_final_df, change ~ n))
+
+
+# explore
+test = df_intensity %>% group_by(Child_ID) %>% nest()
+
+```
+
+# GROWTH CURVE MODELS - PROBLEM SCORES
+```{r}
+
+df_problem_clean = na.omit(df_problem)
+# Graph
+ggplot(df_problem, aes(x = timepoint, y = problem_total_z, group = Child_ID)) +
+  geom_line() + # add individual line with transparency
+  stat_summary( # add average line
+    aes(group = 1),
+    fun = mean,
+    geom = "line",
+    size = 1.5,
+    color = "red"
+  ) +
+  theme_bw() + # nice theme
+  labs(x = "Session Number", y = "ECBI Problem Score") # nice labels
+
+#MLM model
+library(lme4)
+# unconditional means model (a.k.a. random effects model)
+m0 <- lmer(data = df_problem, problem_total_z ~ 1 + (1 | Child_ID))
+# check results
+summary(m0)
+# calculating ratio of between and within variation
+0.6795/(0.6795+0.2918) #0.669 (66% explained by between person, 34% by within)
+
+
+# let's look at prediction base on this model
+df_problem_clean$pred_m0 <- predict(m0)
+df_problem_clean %>% 
+  filter(Child_ID %in% 201:205) %>% # select just five individuals
+  ggplot(aes(timepoint, pred_m0, color = as.factor(Child_ID))) +
+  geom_point(aes(timepoint, problem_total_z)) + # points for observer logincome
+  geom_smooth(method = lm, se = FALSE) + # linear line based on prediction
+  theme_bw() + # nice theme
+  labs(x = "Time point", y = "ECBI Problem Score") + # nice labels
+  theme(legend.position = "none") # hide legend
+
+
+## create new variable starting from 0
+df_problem_clean <- mutate(df_problem_clean, timepoint0 = timepoint - 1)
+# see how it looks like
+head(df_problem_clean, n = 10)
+
+# unconditional change model (a.k.a. MLMC)
+m1 <- lmer(data = df_problem_clean, problem_total_z ~ 1 + timepoint0 + (1 | Child_ID))
+summary(m1)
+
+# let's look at prediction base on this model
+df_problem_clean$pred_m1 <- predict(m1)
+df_problem_clean %>% 
+  filter(Child_ID %in% 201:205) %>% # select just five individuals
+  ggplot(aes(timepoint, pred_m1, color = as.factor(Child_ID))) +
+  geom_point(aes(timepoint, problem_total_z)) + # points for observer logincome
+  geom_smooth(method = lm, se = FALSE) + # linear line based on prediction
+  theme_bw() + # nice theme
+  labs(x = "Timepoint", y = "ECBI Problem Score") + # nice labels
+  theme(legend.position = "none") # hide legend
+
+# unconditional change model (a.k.a. MLMC) with re for change
+m2 <- lmer(data = df_problem_clean, problem_total_z ~ 1 + timepoint0 + (1 + timepoint0 | Child_ID))
+summary(m2)
+
+################################################
+### explanation
+Random effects:
+- intercept: inddividual differences in baseline scores (between child difference)
+- timepoint: individual differences in change scores (between child differtence)
+- residual: within child vaairancce
+Fixed effects:
+- intercept: average scores at time 0
+- wave0: averahe rate of change
+
+################################################
+__________________________________________________________________________
+
+df_problem_clean$pred_m2 <- predict(m2)
+df_problem_clean %>% 
+  filter(Child_ID %in% c(201:206, 208:220, 229:231, 233:238)) %>% # select just two individuals
+  ggplot(aes(timepoint, pred_m2, color = as.factor(Child_ID))) +
+  geom_point(aes(timepoint, problem_total_z)) + # points for observer logincome
+  geom_smooth(method = lm, se = FALSE) + # linear line based on prediction
+  theme_bw(base_size = 26) + # nice theme
+  labs(x = "Timepoint", y = "ECBI Problem Score") + # nice labels
+  theme(legend.position = "none") # hide legend
+
+```
+
+
+# GROWTH CURVE MODELS - INTENSITY SCORES
+```{r}
+
+df_intensity_clean = na.omit(df_intensity)
+# Graph
+ggplot(df_intensity_clean, aes(x = timepoint, y = intensity_total_z, group = Child_ID)) +
+  geom_line() + # add individual line with transparency
+  stat_summary( # add average line
+    aes(group = 1),
+    fun = mean,
+    geom = "line",
+    size = 1.5,
+    color = "red"
+  ) +
+  theme_bw() + # nice theme
+  labs(x = "Session Number", y = "ECBI Intensity Score") # nice labels
+
+# unconditional means model (a.k.a. random effects model)
+m0 <- lmer(data = df_intensity_clean, intensity_total_z ~ 1 + (1 | Child_ID))
+# check results
+summary(m0)
+# calculating ratio of between and within variation
+0.9317/(0.9317+0.2885) #0.7635 (76% explained by between person, 24% by within)
+
+
+# let's look at prediction base on this model
+df_intensity_clean$pred_m0 <- predict(m0)
+df_intensity_clean %>% 
+  filter(Child_ID %in% 201:205) %>% # select just five individuals
+  ggplot(aes(timepoint, pred_m0, color = as.factor(Child_ID))) +
+  geom_point(aes(timepoint, intensity_total_z)) + # points for observer logincome
+  geom_smooth(method = lm, se = FALSE) + # linear line based on prediction
+  theme_bw() + # nice theme
+  labs(x = "Time point", y = "ECBI Intensity Score") + # nice labels
+  theme(legend.position = "none") # hide legend
+
+
+## create new variable starting from 0
+df_intensity_clean <- mutate(df_intensity_clean, timepoint0 = timepoint - 1)
+# see how it looks like
+head(df_intensity_clean, n = 10)
+
+# unconditional change model (a.k.a. MLMC)
+m1 <- lmer(data = df_intensity_clean, intensity_total_z ~ 1 + timepoint0 + (1 | Child_ID))
+summary(m1)
+
+# let's look at prediction base on this model
+df_intensity_clean$pred_m1 <- predict(m1)
+df_intensity_clean %>% 
+  filter(Child_ID %in% 201:205) %>% # select just five individuals
+  ggplot(aes(timepoint, pred_m1, color = as.factor(Child_ID))) +
+  geom_point(aes(timepoint, intensity_total_z)) + # points for observer logincome
+  geom_smooth(method = lm, se = FALSE) + # linear line based on prediction
+  theme_bw() + # nice theme
+  labs(x = "Timepoint", y = "ECBI Intensity Score") + # nice labels
+  theme(legend.position = "none") # hide legend
+
+# unconditional change model (a.k.a. MLMC) with re for change
+m2 <- lmer(data = df_intensity_clean, intensity_total_z ~ 1 + timepoint0 + (1 + timepoint0 | Child_ID))
+summary(m2)
+
+df_intensity_clean$pred_m2 <- predict(m2)
+df_intensity_clean %>% 
+  filter(Child_ID %in% c(201:206, 208:220, 229:231, 233:238)) %>% # select just two individuals
+  ggplot(aes(timepoint, pred_m2, color = as.factor(Child_ID))) +
+  geom_point(aes(timepoint, intensity_total_z)) + # points for observer logincome
+  geom_smooth(method = lm, se = FALSE) + # linear line based on prediction
+  theme_bw(base_size = 26) + # nice theme
+  labs(x = "Timepoint", y = "ECBI Intensity Score") + # nice labels
+  theme(legend.position = "none") # hide legend
+
+```
+
+
+
+
