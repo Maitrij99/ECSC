@@ -8,3 +8,5 @@ The repository contains the following materials:
 -   References (References.pdf)
 
 -   R-code used for analysis (ECSC.Rmd)
+
+-   Demographic Details (Demographic Details.docx)

@@ -60,7 +60,7 @@ names(df2) <- new_names
 # problem scores to numeric
 df2[39:74] = ifelse(df2[39:74] == "Yes", 1, 0)
 
-df_ecbi2 = rbind(df_ecbi, df2)
+df_ecbi2 = rbind(df2, df_ecbi)
   
 ```
 
@@ -104,20 +104,22 @@ df_prob2$problem_total[df_prob2$numMissing_problem < 3] = rowSums(df_prob2[df_pr
 # merging problem and intensity dfs again
 df_ecbi3 = cbind(df_int2, df_prob2)
 
+df_ecbi_ordered <- df_ecbi3[order(df_ecbi3$Child_ID),]
+
 ```
 
 ```{r}
-#ordering
-df_ecbi_ordered <- df_ecbi3[order(df_ecbi3$Child_ID),]
+
 
 table(df_ecbi_ordered$Child_ID)
 
-df_ecbi_ordered$Child_ID = recode(df_ecbi_ordered$Child_ID, "bc" = "207", "BLC" = "207", "BT" = "230", "EB" = "231", "eb" = "231", "Eb" = "231", "EJB" = "231", "ep" = "233", "EP" = "233", "gaj" = "234", "GAJ" = "234", "GJ" = "234", "LK"  = "235", "sctm" = "236", "SCTM" = "236", "XJ" = "237", "zlm" = "238", "ZLM" = "238", "zm" = "238", "ZM" = "238")
+df_ecbi_ordered$Child_ID = recode(df_ecbi_ordered$Child_ID, "bc" = "239", "BLC" = "239", "BT" = "230", "EB" = "231", "eb" = "231", "Eb" = "231", "EJB" = "231", "ep" = "233", "EP" = "233", "gaj" = "234", "GAJ" = "234", "GJ" = "234", "LK"  = "235", "sctm" = "236", "SCTM" = "236", "XJ" = "237", "zlm" = "238", "ZLM" = "238", "zm" = "238", "ZM" = "238")
 
 df_ecbi_ordered = df_ecbi_ordered %>% filter(Child_ID != "test")
 
+
 ### 207 causing problems - was being pooled across wualltrics and REDCap - removing it for now
-df_ecbi_ordered = df_ecbi_ordered %>% filter(Child_ID != "207")
+###df_ecbi_ordered = df_ecbi_ordered %>% filter(Child_ID != "207")
 ```
 
 # create timepoint column
@@ -149,6 +151,11 @@ count = diff_df %>% group_by(Child_ID) %>% summarise(n = n())
 problem_final_df =diff_df %>% group_by(Child_ID) %>% sample_n(1) %>% select(-c(problem_total, timepoint, problem_total_z)) %>% cbind(., count [,2])
 
 write.csv(problem_final_df, "problem_ecbi.csv")
+
+## qualitative graph of scores
+ggplot(data = df_problem, aes(x = timepoint, y= problem_total)) +
+  geom_point() +
+  facet_wrap(facets = "Child_ID")
   
 ```
 
@@ -202,6 +209,12 @@ count_intensity = diff_df_intensity %>% group_by(Child_ID) %>% summarise(n = n()
 intensity_final_df =diff_df_intensity %>% group_by(Child_ID) %>% sample_n(1) %>% select(-c(intensity_total, timepoint, intensity_total_z)) %>% cbind(., count_intensity [,2])
 
 write.csv(intensity_final_df, "intensity_ecbi.csv")
+
+## qualitative graph of scores
+ggplot(data = df_intensity, aes(x = timepoint, y= intensity_total)) +
+  geom_point() +
+  facet_wrap(facets = "Child_ID")
+  
   
 ```
 
@@ -226,7 +239,7 @@ graph2_intensity = ggplot(intensity_final_df, aes(x = n, y = change)) +
   geom_smooth(data = problem_final_df, aes(x = n, y = change), method = "lm", color = "orange") +
   theme_bw(base_size = 26) +
   xlab("Number of Sessions") +
-  ylab("Change Scores") +
+  ylab("Improvement in Behavior") +
   theme(
    # panel.background = element_rect(fill='transparent'), #transparent panel bg
    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
@@ -237,13 +250,9 @@ graph2_intensity = ggplot(intensity_final_df, aes(x = n, y = change)) +
   ) +
   theme(text=element_text(color="white"),axis.text=element_text(color="white"))
 graph2_intensity
-ggsave('graph2_intensity.png', graph2_intensity, bg='transparent')
+ggsave('graph2_intensity.png', graph2_intensity, bg='transparent', width = 10, height = 6)
 
 summary(lm(data = intensity_final_df, change ~ n))
-
-
-# explore
-test = df_intensity %>% group_by(Child_ID) %>% nest()
 
 ```
 
@@ -409,6 +418,70 @@ df_intensity_clean %>%
 
 ```
 
+
+# Demographics
+```{r}
+
+dems = read_csv("demographics.csv")
+
+table(dems$Race)
+22/29 #-- white (76%)
+5/29 #-- bllack (17%)
+1/29 #-- asian (3%)
+1/29 #-- dk (3%)
+
+table(dems$SES)
+1/29 #<10k (3%)
+2/29 #10k-25k (7%)
+3/29 #25k-50k (10%)
+4/29 #50k-75k (14%)
+9/29 #75k-100k (31%) 
+7/29 #100k-150k (24%)
+1/29 #>150k (3%)
+2/29 #dk (7%)
+
+table(dems$gender)
+#female - 10 (34%)
+10/29
+#male - 19 (66%)
+19/29
+
+summary(dems$Age)
+mean - 4
+2-8 range
+
+# Pie chart - gender
+mytable <- table(dems$gender)
+pie(mytable, labels = NA, col = c('white', 'dark green'))
+
+# Pie chart - race
+mytable <- table(dems$Race)
+pie(mytable, labels = NA, col = c('white', 'yellow', 'purple', 'blue', 'pink', 'dark green', 'orange'))
+
+# Pie chart - SES
+mytable <- table(dems$SES)
+pie(mytable, labels = NA,  col = c('white', 'yellow', 'violet', 'blue', 'pink', 'dark green', 'orange'))
+
+
+
+# meaan number of sessions
+intensity_final_df_207 = intensity_final_df %>% filter(Child_ID != 207)
+summary(intensity_final_df$n)
+```
+
+
+# LOOKING AT 207
+```{r}
+
+# REDCap data
+df_ecbi_test = df_ecbi %>% filter(Child_ID == 207)
+
+# Qualtrics Data
+df2_test = df2 %>% filter(Child_ID == 'bc' | Child_ID == 'BLC')
+
+### cannot be same - one in 2019, one in 2022
+
+```
 
 
 
